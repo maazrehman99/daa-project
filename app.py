@@ -107,19 +107,24 @@ def draw_city_map(g: CityGraph, results: dict,
         ax.plot([x1, x2], [y1, y2], color="#ffd700", alpha=0.25, lw=0.7, zorder=2)
 
     # ── Algorithm route lines ─────────────────────────────────────────────────
+    # Dijkstra and A* find the SAME optimal path (both skip negative edges).
+    # We apply a tiny pixel offset to each so both lines are visible side-by-side
+    # instead of one hiding the other completely.
     STYLES = {
-        "Dijkstra":     dict(color="#4fc3f7", ls="--",  lw=2.5, alpha=1.0),
-        "A*":           dict(color="#a5d6a7", ls="-.",  lw=2.5, alpha=1.0),
-        "Bellman-Ford": dict(color="#ff8a65", ls="-",   lw=3.0, alpha=1.0),
+        "Dijkstra":     dict(color="#4fc3f7", ls="--", lw=2.5, alpha=1.0, offset= 0.3),
+        "A*":           dict(color="#a5d6a7", ls="--", lw=2.5, alpha=1.0, offset=-0.3),
+        "Bellman-Ford": dict(color="#ff8a65", ls="-",  lw=3.0, alpha=1.0, offset= 0.0),
     }
     for algo, style in STYLES.items():
         r = results.get(algo, {})
+        off = style.pop("offset")          # visual nudge, not part of plot kwargs
         for leg_key in ("path_leg1", "path_leg2"):
             path = r.get(leg_key)
             if path and len(path) > 1:
-                xs = [g.positions[n][0] for n in path]
-                ys = [g.positions[n][1] for n in path]
+                xs = [g.positions[n][0] + off for n in path]
+                ys = [g.positions[n][1] + off for n in path]
                 ax.plot(xs, ys, zorder=4, **style)
+        style["offset"] = off              # restore so dict stays intact across reruns
 
     # ── Restaurant icons (all 5, selected one highlighted) ────────────────────
     for r_node in g.restaurants:
