@@ -75,9 +75,9 @@ def draw_city_map(g: CityGraph, results: dict,
     """
     Render the city map with all three algorithm routes overlaid.
 
-    Background: every 5th node (by ID) drawn as a tiny dot — ~2,000 dots
-                give a sense of city density without slowing matplotlib.
-    Express lanes: faint gold lines connecting their (u, v) endpoints.
+    Background: actual road grid drawn as thin gray lines (every row + every col)
+                so the city structure is clearly visible beneath the routes.
+    Express lanes: gold lines connecting shortcut endpoints.
     Routes:       Dijkstra = blue dashed, A* = green dash-dot,
                   Bellman-Ford = orange solid (slightly thicker).
     Markers:      S = Rider (cyan), R = Restaurant (orange), D = Destination (green).
@@ -87,13 +87,18 @@ def draw_city_map(g: CityGraph, results: dict,
     ax.set_aspect("equal")
     ax.axis("off")
 
-    # ── Sampled background dots ───────────────────────────────────────────────
-    bg_x, bg_y = [], []
-    for nid, (x, y) in g.positions.items():
-        if nid % 5 == 0:          # ~2,000 out of 10,000 nodes
-            bg_x.append(x)
-            bg_y.append(y)
-    ax.scatter(bg_x, bg_y, s=0.5, c="#1c2640", zorder=1, linewidths=0)
+    # ── Road grid — draw every row and every column as a continuous line ───────
+    # Each line connects the jittered node positions along that row/col,
+    # so the slight random offset makes it look like a real (non-perfect) city grid.
+    for row in range(g.ROWS):
+        xs = [g.positions[g.nid(col, row)][0] for col in range(g.COLS)]
+        ys = [g.positions[g.nid(col, row)][1] for col in range(g.COLS)]
+        ax.plot(xs, ys, color="#1e2d40", lw=0.4, zorder=1)
+
+    for col in range(g.COLS):
+        xs = [g.positions[g.nid(col, row)][0] for row in range(g.ROWS)]
+        ys = [g.positions[g.nid(col, row)][1] for row in range(g.ROWS)]
+        ax.plot(xs, ys, color="#1e2d40", lw=0.4, zorder=1)
 
     # ── Express lanes ─────────────────────────────────────────────────────────
     for u, v in g.negative_edges:
@@ -103,9 +108,9 @@ def draw_city_map(g: CityGraph, results: dict,
 
     # ── Algorithm route lines ─────────────────────────────────────────────────
     STYLES = {
-        "Dijkstra":     dict(color="#4fc3f7", ls="--",  lw=2.0, alpha=0.85),
-        "A*":           dict(color="#81c784", ls="-.",  lw=2.0, alpha=0.85),
-        "Bellman-Ford": dict(color="#ff8a65", ls="-",   lw=2.5, alpha=0.90),
+        "Dijkstra":     dict(color="#4fc3f7", ls="--",  lw=2.5, alpha=1.0),
+        "A*":           dict(color="#a5d6a7", ls="-.",  lw=2.5, alpha=1.0),
+        "Bellman-Ford": dict(color="#ff8a65", ls="-",   lw=3.0, alpha=1.0),
     }
     for algo, style in STYLES.items():
         r = results.get(algo, {})
