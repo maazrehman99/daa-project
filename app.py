@@ -73,106 +73,115 @@ def get_nx_bundle(seed: int):
 def draw_city_map(g: CityGraph, results: dict,
                   rider: int, restaurant: int, dest: int) -> plt.Figure:
     """
-    Render the city map with all three algorithm routes overlaid.
+    Render the city map clearly showing the two-leg delivery journey.
 
-    Background: actual road grid drawn as thin gray lines (every row + every col)
-                so the city structure is clearly visible beneath the routes.
-    Express lanes: gold lines connecting shortcut endpoints.
-    Routes:       Dijkstra = blue dashed, A* = green dash-dot,
-                  Bellman-Ford = orange solid (slightly thicker).
-    Markers:      S = Rider (cyan), R = Restaurant (orange), D = Destination (green).
+    LEG 1 (rider → restaurant): drawn with LOW opacity  — pickup route
+    LEG 2 (restaurant → customer): drawn with FULL opacity — delivery route
+
+    This makes it obvious the route has two separate stages, meeting at R.
+    Colors: Dijkstra=blue, A*=green, Bellman-Ford=orange.
     """
-    fig, ax = plt.subplots(figsize=(9, 9), facecolor="#0d1117")
+    fig, ax = plt.subplots(figsize=(10, 10), facecolor="#0d1117")
     ax.set_facecolor("#0d1117")
     ax.set_aspect("equal")
     ax.axis("off")
 
-    # ── Road grid — draw every row and every column as a continuous line ───────
-    # Each line connects the jittered node positions along that row/col,
-    # so the slight random offset makes it look like a real (non-perfect) city grid.
+    # ── Road grid ─────────────────────────────────────────────────────────────
     for row in range(g.ROWS):
         xs = [g.positions[g.nid(col, row)][0] for col in range(g.COLS)]
         ys = [g.positions[g.nid(col, row)][1] for col in range(g.COLS)]
-        ax.plot(xs, ys, color="#1e2d40", lw=0.4, zorder=1)
-
+        ax.plot(xs, ys, color="#1a2535", lw=0.4, zorder=1)
     for col in range(g.COLS):
         xs = [g.positions[g.nid(col, row)][0] for row in range(g.ROWS)]
         ys = [g.positions[g.nid(col, row)][1] for row in range(g.ROWS)]
-        ax.plot(xs, ys, color="#1e2d40", lw=0.4, zorder=1)
+        ax.plot(xs, ys, color="#1a2535", lw=0.4, zorder=1)
 
     # ── Express lanes ─────────────────────────────────────────────────────────
     for u, v in g.negative_edges:
         x1, y1 = g.positions[u]
         x2, y2 = g.positions[v]
-        ax.plot([x1, x2], [y1, y2], color="#ffd700", alpha=0.25, lw=0.7, zorder=2)
+        ax.plot([x1, x2], [y1, y2], color="#ffd700", alpha=0.3, lw=0.8, zorder=2)
 
-    # ── Algorithm route lines ─────────────────────────────────────────────────
-    # Dijkstra and A* find the SAME optimal path (both skip negative edges).
-    # We apply a tiny pixel offset to each so both lines are visible side-by-side
-    # instead of one hiding the other completely.
-    STYLES = {
-        "Dijkstra":     dict(color="#4fc3f7", ls="--", lw=2.5, alpha=1.0, offset= 0.3),
-        "A*":           dict(color="#a5d6a7", ls="--", lw=2.5, alpha=1.0, offset=-0.3),
-        "Bellman-Ford": dict(color="#ff8a65", ls="-",  lw=3.0, alpha=1.0, offset= 0.0),
+    # ── Route drawing ─────────────────────────────────────────────────────────
+    # Each algorithm draws two legs:
+    #   Leg 1  (rider → restaurant) : dashed, semi-transparent  = "going to pick up"
+    #   Leg 2  (restaurant → dest)  : solid,  fully opaque      = "delivering to customer"
+    # Small X/Y offsets keep Dijkstra and A* (same path) visually separable.
+    ALGO_STYLES = {
+        #            color       offset
+        "Dijkstra":     ("#4fc3f7",  0.35),
+        "A*":           ("#a5d6a7", -0.35),
+        "Bellman-Ford": ("#ff8a65",  0.00),
     }
-    for algo, style in STYLES.items():
-        r = results.get(algo, {})
-        off = style.pop("offset")          # visual nudge, not part of plot kwargs
-        for leg_key in ("path_leg1", "path_leg2"):
-            path = r.get(leg_key)
-            if path and len(path) > 1:
-                xs = [g.positions[n][0] + off for n in path]
-                ys = [g.positions[n][1] + off for n in path]
-                ax.plot(xs, ys, zorder=4, **style)
-        style["offset"] = off              # restore so dict stays intact across reruns
 
-    # ── Restaurant icons (all 5, selected one highlighted) ────────────────────
+    for algo, (color, off) in ALGO_STYLES.items():
+        r = results.get(algo, {})
+
+        # Leg 1 — rider → restaurant (dashed, dimmer)
+        leg1 = r.get("path_leg1")
+        if leg1 and len(leg1) > 1:
+            xs = [g.positions[n][0] + off for n in leg1]
+            ys = [g.positions[n][1] + off for n in leg1]
+            ax.plot(xs, ys, color=color, ls="--", lw=2.0, alpha=0.5, zorder=4)
+
+        # Leg 2 — restaurant → customer (solid, bright)
+        leg2 = r.get("path_leg2")
+        if leg2 and len(leg2) > 1:
+            xs = [g.positions[n][0] + off for n in leg2]
+            ys = [g.positions[n][1] + off for n in leg2]
+            ax.plot(xs, ys, color=color, ls="-",  lw=2.8, alpha=1.0, zorder=4)
+
+    # ── Restaurant icons (all 5) ───────────────────────────────────────────────
     for r_node in g.restaurants:
         selected = r_node == restaurant
         x, y = g.positions[r_node]
-        ax.scatter(
-            [x], [y], s=90,
-            c="#ff8c00" if selected else "#2e2e3e",
-            zorder=5, marker="^",
-            edgecolors="white" if selected else "#555",
-            linewidths=1.5 if selected else 0.5,
-        )
+        ax.scatter([x], [y], s=80 if not selected else 0,
+                   c="#2e2e3e", zorder=3, marker="^",
+                   edgecolors="#555", linewidths=0.5)
 
-    # ── Key node markers ──────────────────────────────────────────────────────
-    def _mark(node: int, label: str, color: str, sz: int = 160):
+    # ── Big clear markers for the 3 key points ────────────────────────────────
+    def _mark(node: int, label: str, color: str, sz: int = 220):
         x, y = g.positions[node]
-        ax.scatter([x], [y], s=sz, c=color, zorder=6,
-                   edgecolors="white", linewidths=1.5)
+        ax.scatter([x], [y], s=sz, c=color, zorder=7,
+                   edgecolors="white", linewidths=2.0)
         ax.annotate(label, (x, y), textcoords="offset points",
-                    xytext=(8, 7), color="white",
-                    fontsize=10, fontweight="bold", zorder=7)
+                    xytext=(10, 8), color="white",
+                    fontsize=12, fontweight="bold", zorder=8,
+                    bbox=dict(boxstyle="round,pad=0.2", fc="#0d1117", alpha=0.6, ec="none"))
 
-    _mark(rider,      " S", "#00bcd4")          # Rider start – cyan
-    _mark(restaurant, " R", "#ff8c00", sz=175)  # Restaurant  – orange
-    _mark(dest,       " D", "#66bb6a", sz=175)  # Destination – green
+    _mark(rider,      "S  Rider",       "#00bcd4", sz=250)
+    _mark(restaurant, "R  Restaurant",  "#ff8c00", sz=280)
+    _mark(dest,       "D  Customer",    "#66bb6a", sz=250)
+
+    # ── Arrow showing journey direction ───────────────────────────────────────
+    # Draw a faint arc: S → R → D so the flow is obvious
+    sx, sy = g.positions[rider]
+    rx, ry = g.positions[restaurant]
+    dx, dy = g.positions[dest]
+    ax.annotate("", xy=(rx, ry), xytext=(sx, sy),
+                arrowprops=dict(arrowstyle="-|>", color="#00bcd4",
+                                lw=1.2, alpha=0.4,
+                                connectionstyle="arc3,rad=0.15"), zorder=3)
+    ax.annotate("", xy=(dx, dy), xytext=(rx, ry),
+                arrowprops=dict(arrowstyle="-|>", color="#66bb6a",
+                                lw=1.2, alpha=0.4,
+                                connectionstyle="arc3,rad=0.15"), zorder=3)
 
     # ── Legend ────────────────────────────────────────────────────────────────
     legend_handles = [
-        mlines.Line2D([], [], color="#4fc3f7", ls="--",  lw=2,   label="Dijkstra"),
-        mlines.Line2D([], [], color="#81c784", ls="-.",  lw=2,   label="A*"),
-        mlines.Line2D([], [], color="#ff8a65", ls="-",   lw=2.5, label="Bellman-Ford"),
-        mlines.Line2D([], [], color="#ffd700", ls="-",   lw=1,   label="Express Lane", alpha=0.7),
-        mlines.Line2D([], [], marker="o", color="w", markerfacecolor="#00bcd4",
-                      markersize=8, label="Rider (S)",       linestyle=""),
-        mlines.Line2D([], [], marker="^", color="w", markerfacecolor="#ff8c00",
-                      markersize=8, label="Restaurant (R)",  linestyle=""),
-        mlines.Line2D([], [], marker="o", color="w", markerfacecolor="#66bb6a",
-                      markersize=8, label="Destination (D)", linestyle=""),
+        mlines.Line2D([], [], color="#4fc3f7", ls="-",  lw=2.5, label="Dijkstra"),
+        mlines.Line2D([], [], color="#a5d6a7", ls="-",  lw=2.5, label="A*  (same path, offset)"),
+        mlines.Line2D([], [], color="#ff8a65", ls="-",  lw=2.5, label="Bellman-Ford"),
+        mlines.Line2D([], [], color="#ffffff", ls="--", lw=1.5, label="── Leg 1: Rider → Restaurant", alpha=0.5),
+        mlines.Line2D([], [], color="#ffffff", ls="-",  lw=1.5, label="─── Leg 2: Restaurant → Customer"),
+        mlines.Line2D([], [], color="#ffd700", ls="-",  lw=1.0, label="Express Lane", alpha=0.6),
     ]
-    ax.legend(
-        handles=legend_handles, loc="lower right",
-        facecolor="#1a1f2e", labelcolor="white",
-        edgecolor="#333", fontsize=9, framealpha=0.92,
-    )
-    ax.set_title(
-        "FoodPappa City Map  ·  100×100 Urban Grid",
-        color="#aaaaaa", fontsize=11, pad=8, loc="left",
-    )
+    ax.legend(handles=legend_handles, loc="lower right",
+              facecolor="#111927", labelcolor="white",
+              edgecolor="#334", fontsize=9, framealpha=0.95)
+
+    ax.set_title("FoodPappa  ·  Delivery Route Map  (dashed = pickup,  solid = delivery)",
+                 color="#aaa", fontsize=11, pad=10, loc="left")
     fig.tight_layout(pad=0.5)
     return fig
 
